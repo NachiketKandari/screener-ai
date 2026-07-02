@@ -1,0 +1,1 @@
+"""Screener — text-to-SQL stock screening for strattest."""
