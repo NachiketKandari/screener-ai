@@ -196,16 +196,16 @@ def backfill_fundamentals(tickers: list[str]):
             if not info or info.get("marketCap") is None:
                 continue
 
-                def get(key, default=None, scale=1.0):
-                    val = info.get(key)
-                    if val is None:
-                        return default
-                    try:
-                        return float(val) * scale
-                    except (ValueError, TypeError):
-                        return val
+            def get(key, default=None, scale=1.0):
+                val = info.get(key)
+                if val is None:
+                    return default
+                try:
+                    return float(val) * scale
+                except (ValueError, TypeError):
+                    return val
 
-                conn.execute(
+            conn.execute(
                     """INSERT OR REPLACE INTO stock_fundamentals
                        (ticker, as_of_date, company_name, sector, industry, exchange,
                         current_price, market_cap_crore, pe_ratio, forward_pe, pb_ratio,
@@ -285,9 +285,9 @@ def backfill_fundamentals(tickers: list[str]):
                     ),
                 )
 
-                if (i + 1) % 50 == 0 or i == len(yf_symbols) - 1:
-                    conn.commit()
-                    print(f"  {i + 1}/{len(yf_symbols)} fundamentals done ({(i + 1) / len(yf_symbols) * 100:.0f}%)")
+            if (i + 1) % 50 == 0 or i == len(yf_symbols) - 1:
+                conn.commit()
+                print(f"  {i + 1}/{len(yf_symbols)} fundamentals done ({(i + 1) / len(yf_symbols) * 100:.0f}%)")
 
             time.sleep(FUNDA_DELAY)
 
