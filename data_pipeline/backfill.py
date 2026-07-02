@@ -2,7 +2,6 @@
 
 import sqlite3
 import time
-import sys
 from datetime import datetime, date
 from pathlib import Path
 
@@ -185,15 +184,17 @@ def backfill_fundamentals(tickers: list[str]):
                 try:
                     t = yf.Ticker(sym)
                     info = t.info
-                    if info and info.get("marketCap"):
+                    if info and info.get("currentPrice") and info.get("longName"):
                         break
+                    if info is not None:
+                        break  # info retrieved but missing key fields; retrying won't help
                 except Exception as e:
                     if attempt < 2:
                         wait = 5 * (attempt + 1)
                         time.sleep(wait)
                     continue
 
-            if not info or info.get("marketCap") is None:
+            if not info or not (info.get("currentPrice") and info.get("longName")):
                 continue
 
             def get(key, default=None, scale=1.0):
@@ -205,85 +206,89 @@ def backfill_fundamentals(tickers: list[str]):
                 except (ValueError, TypeError):
                     return val
 
-            conn.execute(
-                    """INSERT OR REPLACE INTO stock_fundamentals
-                       (ticker, as_of_date, company_name, sector, industry, exchange,
-                        current_price, market_cap_crore, pe_ratio, forward_pe, pb_ratio,
-                        peg_ratio, price_to_sales,
-                        roe_pct, roa_pct, profit_margins_pct, operating_margins_pct,
-                        gross_margins_pct, ebitda_margins_pct,
-                        eps_ttm, eps_forward, book_value_per_share, revenue_per_share,
-                        revenue_growth_pct, earnings_growth_pct, earnings_quarterly_growth_pct,
-                        debt_to_equity, current_ratio, quick_ratio, payout_ratio,
-                        dividend_yield_pct, five_year_avg_dividend_yield_pct,
-                        high_52w, low_52w, beta,
-                        target_mean_price, target_high_price, target_low_price,
-                        recommendation, number_of_analysts,
-                        held_pct_insiders, held_pct_institutions,
-                        free_cashflow, operating_cashflow, total_cash_per_share,
-                        total_debt, total_revenue, ebitda)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?,
-                               ?, ?, ?,
-                               ?, ?, ?, ?,
-                               ?, ?,
-                               ?, ?, ?,
-                               ?, ?, ?,
-                               ?, ?,
-                               ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        ticker_name,
-                        date.today().isoformat(),
-                        info.get("longName") or info.get("shortName"),
-                        info.get("sector"),
-                        info.get("industry"),
-                        info.get("exchange"),
-                        get("currentPrice"),
-                        get("marketCap", scale=1e-7),
-                        get("trailingPE"),
-                        get("forwardPE"),
-                        get("priceToBook"),
-                        get("pegRatio"),
-                        get("priceToSalesTrailing12Months"),
-                        get("returnOnEquity", scale=100),
-                        get("returnOnAssets", scale=100),
-                        get("profitMargins", scale=100),
-                        get("operatingMargins", scale=100),
-                        get("grossMargins", scale=100),
-                        get("ebitdaMargins", scale=100),
-                        get("trailingEps"),
-                        get("forwardEps"),
-                        get("bookValue"),
-                        get("revenuePerShare"),
-                        get("revenueGrowth", scale=100),
-                        get("earningsGrowth", scale=100),
-                        get("earningsQuarterlyGrowth", scale=100),
-                        get("debtToEquity"),
-                        get("currentRatio"),
-                        get("quickRatio"),
-                        get("payoutRatio"),
-                        get("dividendYield", scale=100),
-                        get("fiveYearAvgDividendYield", scale=100),
-                        get("fiftyTwoWeekHigh"),
-                        get("fiftyTwoWeekLow"),
-                        get("beta"),
-                        get("targetMeanPrice"),
-                        get("targetHighPrice"),
-                        get("targetLowPrice"),
-                        info.get("recommendationKey"),
-                        info.get("numberOfAnalystOpinions"),
-                        get("heldPercentInsiders", scale=100),
-                        get("heldPercentInstitutions", scale=100),
-                        get("freeCashflow"),
-                        get("operatingCashflow"),
-                        get("totalCashPerShare"),
-                        get("totalDebt"),
-                        get("totalRevenue"),
-                        get("ebitda"),
-                    ),
-                )
+            try:
+                conn.execute(
+                        """INSERT OR REPLACE INTO stock_fundamentals
+                           (ticker, as_of_date, company_name, sector, industry, exchange,
+                            current_price, market_cap_crore, pe_ratio, forward_pe, pb_ratio,
+                            peg_ratio, price_to_sales,
+                            roe_pct, roa_pct, profit_margins_pct, operating_margins_pct,
+                            gross_margins_pct, ebitda_margins_pct,
+                            eps_ttm, eps_forward, book_value_per_share, revenue_per_share,
+                            revenue_growth_pct, earnings_growth_pct, earnings_quarterly_growth_pct,
+                            debt_to_equity, current_ratio, quick_ratio, payout_ratio,
+                            dividend_yield_pct, five_year_avg_dividend_yield_pct,
+                            high_52w, low_52w, beta,
+                            target_mean_price, target_high_price, target_low_price,
+                            recommendation, number_of_analysts,
+                            held_pct_insiders, held_pct_institutions,
+                            free_cashflow, operating_cashflow, total_cash_per_share,
+                            total_debt, total_revenue, ebitda)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                   ?, ?, ?, ?, ?, ?,
+                                   ?, ?, ?, ?,
+                                   ?, ?, ?,
+                                   ?, ?, ?, ?,
+                                   ?, ?,
+                                   ?, ?, ?,
+                                   ?, ?, ?,
+                                   ?, ?,
+                                   ?, ?,
+                                   ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            ticker_name,
+                            date.today().isoformat(),
+                            info.get("longName") or info.get("shortName"),
+                            info.get("sector"),
+                            info.get("industry"),
+                            info.get("exchange"),
+                            get("currentPrice"),
+                            get("marketCap", scale=1e-7),
+                            get("trailingPE"),
+                            get("forwardPE"),
+                            get("priceToBook"),
+                            get("pegRatio"),
+                            get("priceToSalesTrailing12Months"),
+                            get("returnOnEquity", scale=100),
+                            get("returnOnAssets", scale=100),
+                            get("profitMargins", scale=100),
+                            get("operatingMargins", scale=100),
+                            get("grossMargins", scale=100),
+                            get("ebitdaMargins", scale=100),
+                            get("trailingEps"),
+                            get("forwardEps"),
+                            get("bookValue"),
+                            get("revenuePerShare"),
+                            get("revenueGrowth", scale=100),
+                            get("earningsGrowth", scale=100),
+                            get("earningsQuarterlyGrowth", scale=100),
+                            get("debtToEquity"),
+                            get("currentRatio"),
+                            get("quickRatio"),
+                            get("payoutRatio"),
+                            get("dividendYield", scale=100),
+                            get("fiveYearAvgDividendYield", scale=100),
+                            get("fiftyTwoWeekHigh"),
+                            get("fiftyTwoWeekLow"),
+                            get("beta"),
+                            get("targetMeanPrice"),
+                            get("targetHighPrice"),
+                            get("targetLowPrice"),
+                            info.get("recommendationKey"),
+                            info.get("numberOfAnalystOpinions"),
+                            get("heldPercentInsiders", scale=100),
+                            get("heldPercentInstitutions", scale=100),
+                            get("freeCashflow"),
+                            get("operatingCashflow"),
+                            get("totalCashPerShare"),
+                            get("totalDebt"),
+                            get("totalRevenue"),
+                            get("ebitda"),
+                        ),
+                    )
+            except Exception as e:
+                print(f"  {ticker_name}: insert error: {e}")
+                continue
 
             if (i + 1) % 50 == 0 or i == len(yf_symbols) - 1:
                 conn.commit()

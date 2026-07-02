@@ -32,6 +32,10 @@ def sync_ohlcv(tickers: list[str]):
     last_date = get_last_date()
     today = date.today().isoformat()
 
+    if last_date is None:
+        last_date = (date.today() - timedelta(days=7)).isoformat()
+        print(f"No existing data, starting from {last_date}")
+
     if last_date == today:
         print(f"Already up to date ({today}).")
         return
@@ -128,7 +132,7 @@ def sync_fundamentals(tickers: list[str]):
             sym = f"{t}.NS"
             try:
                 info = yf.Ticker(sym).info
-                if not info or not info.get("marketCap"):
+                if not info or not (info.get("currentPrice") and info.get("longName")):
                     continue
 
                 def get(key, default=None, scale=1.0):
@@ -138,27 +142,38 @@ def sync_fundamentals(tickers: list[str]):
                     try:
                         return float(val) * scale
                     except (ValueError, TypeError):
-                        return val
+                        return default
 
                 conn.execute(
-                    """UPDATE stock_fundamentals SET
-                       as_of_date=?, company_name=?, sector=?, industry=?, exchange=?,
-                       current_price=?, market_cap_crore=?, pe_ratio=?, forward_pe=?, pb_ratio=?,
-                       peg_ratio=?, price_to_sales=?,
-                       roe_pct=?, roa_pct=?, profit_margins_pct=?, operating_margins_pct=?,
-                       gross_margins_pct=?, ebitda_margins_pct=?,
-                       eps_ttm=?, eps_forward=?, book_value_per_share=?, revenue_per_share=?,
-                       revenue_growth_pct=?, earnings_growth_pct=?, earnings_quarterly_growth_pct=?,
-                       debt_to_equity=?, current_ratio=?, quick_ratio=?, payout_ratio=?,
-                       dividend_yield_pct=?, five_year_avg_dividend_yield_pct=?,
-                       high_52w=?, low_52w=?, beta=?,
-                       target_mean_price=?, target_high_price=?, target_low_price=?,
-                       recommendation=?, number_of_analysts=?,
-                       held_pct_insiders=?, held_pct_institutions=?,
-                       free_cashflow=?, operating_cashflow=?, total_cash_per_share=?,
-                       total_debt=?, total_revenue=?, ebitda=?
-                       WHERE ticker=?""",
+                    """INSERT OR REPLACE INTO stock_fundamentals
+                       (ticker, as_of_date, company_name, sector, industry, exchange,
+                        current_price, market_cap_crore, pe_ratio, forward_pe, pb_ratio,
+                        peg_ratio, price_to_sales,
+                        roe_pct, roa_pct, profit_margins_pct, operating_margins_pct,
+                        gross_margins_pct, ebitda_margins_pct,
+                        eps_ttm, eps_forward, book_value_per_share, revenue_per_share,
+                        revenue_growth_pct, earnings_growth_pct, earnings_quarterly_growth_pct,
+                        debt_to_equity, current_ratio, quick_ratio, payout_ratio,
+                        dividend_yield_pct, five_year_avg_dividend_yield_pct,
+                        high_52w, low_52w, beta,
+                        target_mean_price, target_high_price, target_low_price,
+                        recommendation, number_of_analysts,
+                        held_pct_insiders, held_pct_institutions,
+                        free_cashflow, operating_cashflow, total_cash_per_share,
+                        total_debt, total_revenue, ebitda)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                               ?, ?, ?, ?, ?, ?,
+                               ?, ?, ?, ?,
+                               ?, ?, ?,
+                               ?, ?, ?, ?,
+                               ?, ?,
+                               ?, ?, ?,
+                               ?, ?, ?,
+                               ?, ?,
+                               ?, ?,
+                               ?, ?, ?, ?, ?, ?, ?)""",
                     (
+                        t,
                         today, info.get("longName") or info.get("shortName"),
                         info.get("sector"), info.get("industry"), info.get("exchange"),
                         get("currentPrice"), get("marketCap", scale=1e-7),
@@ -180,7 +195,6 @@ def sync_fundamentals(tickers: list[str]):
                         get("heldPercentInsiders", scale=100), get("heldPercentInstitutions", scale=100),
                         get("freeCashflow"), get("operatingCashflow"), get("totalCashPerShare"),
                         get("totalDebt"), get("totalRevenue"), get("ebitda"),
-                        t,
                     ),
                 )
 
