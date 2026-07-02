@@ -1,0 +1,19 @@
+# Database
+db/*.db
+db/*.sqlite
+db/*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Cache
+.cache/
+*.csv
+
+# Secrets
+.env
+*.csv
+*.csv
