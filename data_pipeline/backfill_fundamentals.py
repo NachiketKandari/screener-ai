@@ -1,23 +1,36 @@
-"""Robust fundamentals backfill with per-stock logging. Run directly: python3 backfill_fundamentals.py"""
-import sqlite3, time, sys, os
+"""Fundamentals backfill with file-based logging and rate-limit jitter."""
+import sqlite3, time, sys, os, random
 from pathlib import Path
 from datetime import date
 import yfinance as yf
 
-sys.stdout.reconfigure(line_buffering=True)
-
 DB_PATH = Path(__file__).parent.parent / "db" / "strattest.db"
+LOG_PATH = Path(__file__).parent.parent / "db" / "fundamentals_progress.log"
+
+def log(msg):
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line, flush=True)
+    with open(LOG_PATH, "a") as f:
+        f.write(line + "\n")
+
+def jitter(base=1.5, spread=0.8):
+    """Random delay to avoid rate-limit pattern detection."""
+    return base + random.uniform(0, spread)
+
+# Main
+log("Starting fundamentals backfill")
 
 with sqlite3.connect(str(DB_PATH)) as conn:
     all_tickers = sorted([r[0] for r in conn.execute("SELECT DISTINCT ticker FROM eod_prices")])
     existing = {r[0] for r in conn.execute("SELECT ticker FROM stock_fundamentals")}
 
 remaining = [t for t in all_tickers if t not in existing]
-print(f"Already done: {len(existing)} | Remaining: {len(remaining)}")
+log(f"Done: {len(existing)} | Remaining: {len(remaining)}")
 
 BATCH = 200
 COOLDOWN_EVERY = 300
-COOLDOWN_SECS = 60
+COOLDOWN_SECS = 45
 
 inserted = 0
 skipped = 0
@@ -34,13 +47,13 @@ for i, ticker_name in enumerate(remaining):
             break
         except Exception:
             if attempt == 0:
-                time.sleep(3)
+                time.sleep(3 + random.uniform(0, 2))
             continue
 
     if not info or info.get("marketCap") is None:
         skipped += 1
         if skipped % 100 == 0:
-            print(f"  Skipped {skipped} so far (no mcap), last: {ticker_name}")
+            log(f"Skipped {skipped} so far (no mcap), last: {ticker_name}")
     else:
         try:
             def get(key, default=None, scale=1.0):
@@ -106,22 +119,24 @@ for i, ticker_name in enumerate(remaining):
         except Exception as e:
             errors += 1
             if errors <= 5:
-                print(f"  ERROR [{ticker_name}]: {e}")
+                log(f"ERROR [{ticker_name}]: {e}")
 
     total_processed = i + 1
     if total_processed % BATCH == 0:
         pct = total_processed / len(remaining) * 100
-        print(f"  {total_processed}/{len(remaining)} ({pct:.0f}%) | inserted={inserted} skipped={skipped} errors={errors}")
+        log(f"{total_processed}/{len(remaining)} ({pct:.0f}%) | in={inserted} skip={skipped} err={errors}")
 
-    time.sleep(1.5)
+    # Jittered delay to avoid rate-limit pattern
+    time.sleep(jitter(1.5, 0.8))
 
     if total_processed % COOLDOWN_EVERY == 0:
-        print(f"  Cooldown {COOLDOWN_SECS}s...")
+        log(f"Cooldown {COOLDOWN_SECS}s...")
         time.sleep(COOLDOWN_SECS)
 
-print(f"\nDONE: inserted={inserted} skipped={skipped} errors={errors}")
+log(f"DONE: inserted={inserted} skipped={skipped} errors={errors}")
 
 with sqlite3.connect(str(DB_PATH)) as conn:
     f = conn.execute("SELECT COUNT(*) FROM stock_fundamentals").fetchone()[0]
 size = os.path.getsize(str(DB_PATH)) / 1024**2
-print(f"Total fundamentals: {f} | DB size: {size:.0f}MB")
+log(f"Total fundamentals: {f} | DB: {size:.0f}MB")
+log("Backfill complete.")
