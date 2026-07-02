@@ -152,17 +152,49 @@ def backfill_fundamentals(tickers: list[str]):
     total = len(tickers)
     print(f"Fundamentals backfill: {total} stocks")
 
-    yf_symbols = [f"{t}.NS" for t in tickers]
+    # Check which tickers already have fundamentals
+    existing = set()
+    if DB_PATH.exists():
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            try:
+                cursor = conn.execute("SELECT ticker FROM stock_fundamentals")
+                existing = {row[0] for row in cursor.fetchall()}
+            except sqlite3.OperationalError:
+                pass
+
+    yf_symbols = [f"{t}.NS" for t in tickers if t not in existing]
+    skipped = total - len(yf_symbols)
+    if skipped:
+        print(f"  {skipped} already processed, {len(yf_symbols)} remaining")
+
+    if not yf_symbols:
+        print("Fundamentals backfill complete — nothing to do.")
+        return
+
+    FUNDA_DELAY = 1.5  # seconds between calls to avoid rate limiting
+    BATCH_BREAK_EVERY = 200  # take a longer break every N stocks
+    BATCH_BREAK_SECS = 30
 
     with sqlite3.connect(str(DB_PATH)) as conn:
         for i, sym in enumerate(yf_symbols):
             ticker_name = sym.replace(".NS", "")
-            try:
-                t = yf.Ticker(sym)
-                info = t.info
 
-                if not info or info.get("trailingPegRatio") is None and info.get("marketCap") is None:
+            # Retry up to 3 times with backoff
+            info = None
+            for attempt in range(3):
+                try:
+                    t = yf.Ticker(sym)
+                    info = t.info
+                    if info and info.get("marketCap"):
+                        break
+                except Exception as e:
+                    if attempt < 2:
+                        wait = 5 * (attempt + 1)
+                        time.sleep(wait)
                     continue
+
+            if not info or info.get("marketCap") is None:
+                continue
 
                 def get(key, default=None, scale=1.0):
                     val = info.get(key)
@@ -253,15 +285,16 @@ def backfill_fundamentals(tickers: list[str]):
                     ),
                 )
 
-                if (i + 1) % 100 == 0 or i == total - 1:
+                if (i + 1) % 50 == 0 or i == len(yf_symbols) - 1:
                     conn.commit()
-                    print(f"  {i + 1}/{total} fundamentals done ({(i + 1) / total * 100:.0f}%)")
+                    print(f"  {i + 1}/{len(yf_symbols)} fundamentals done ({(i + 1) / len(yf_symbols) * 100:.0f}%)")
 
-            except Exception as e:
-                print(f"  {ticker_name}: error: {e}")
-                continue
+            time.sleep(FUNDA_DELAY)
 
-            time.sleep(STOCK_DELAY)
+            # Longer break every BATCH_BREAK_EVERY to let Yahoo cool down
+            if (i + 1) % BATCH_BREAK_EVERY == 0:
+                print(f"  Cooling down for {BATCH_BREAK_SECS}s...")
+                time.sleep(BATCH_BREAK_SECS)
 
     print("Fundamentals backfill complete.")
 
