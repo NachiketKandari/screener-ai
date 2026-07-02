@@ -1,5 +1,6 @@
 import os
-from screener.config import Config
+import pytest
+from screener.config import Config, ConfigError
 
 
 def test_config_loads_from_env(monkeypatch):
@@ -39,8 +40,12 @@ def test_config_defaults(monkeypatch):
 
 def test_config_missing_api_key(monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    try:
+    with pytest.raises(ConfigError, match="DEEPSEEK_API_KEY"):
         Config()
-        assert False, "Expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 1
+
+
+def test_config_invalid_int_env(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    monkeypatch.setenv("STRATTEST_QUERY_TIMEOUT", "abc")
+    with pytest.raises(ConfigError, match="STRATTEST_QUERY_TIMEOUT"):
+        Config()

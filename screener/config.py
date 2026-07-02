@@ -1,28 +1,39 @@
 import os
-import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
 
-load_dotenv()
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        raise ConfigError(
+            f"{name}={raw!r} is not a valid integer"
+        ) from None
+
+
+class ConfigError(Exception):
+    """Configuration error — missing or invalid env vars."""
+    pass
 
 
 class Config:
     def __init__(self):
         self.api_key = os.environ.get("DEEPSEEK_API_KEY")
         if not self.api_key:
-            print("Error: DEEPSEEK_API_KEY environment variable is required")
-            sys.exit(1)
+            raise ConfigError(
+                "DEEPSEEK_API_KEY environment variable is required"
+            )
 
         self.base_url = os.environ.get(
             "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
         )
         self.model = os.environ.get("STRATTEST_MODEL", "deepseek-v4-flash")
         self.db_path = os.environ.get("STRATTEST_DB_PATH", "db/strattest.db")
-        self.query_timeout = int(
-            os.environ.get("STRATTEST_QUERY_TIMEOUT", "30")
+        self.query_timeout = _int_env(
+            "STRATTEST_QUERY_TIMEOUT", 30
         )
-        self.max_rows = int(os.environ.get("STRATTEST_MAX_ROWS", "1000"))
+        self.max_rows = _int_env("STRATTEST_MAX_ROWS", 1000)
 
     @property
     def db_path_absolute(self):

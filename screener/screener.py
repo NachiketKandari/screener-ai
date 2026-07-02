@@ -110,17 +110,7 @@ def _extract_sql(raw: str) -> str:
     m = re.search(r"```(?:sql)?\s*\n?(.*?)```", s, re.DOTALL)
     if m:
         s = m.group(1).strip()
-    # If the response starts with SELECT, take the first paragraph
-    if s.upper().startswith("SELECT"):
-        lines = s.split("\n")
-        # Grab until first blank line or non-SQL line
-        sql_lines = []
-        for line in lines:
-            if line.strip() == "":
-                break
-            sql_lines.append(line)
-        s = " ".join(sql_lines)
-    return s.strip()
+    return s
 
 
 def _llm_call(

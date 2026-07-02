@@ -4,14 +4,17 @@ import argparse
 import csv
 import sys
 
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-from screener.config import Config
+from screener.config import Config, ConfigError
 from screener.screener import Screener, QueryError
 
 
 def main():
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="screener",
         description="Text-to-SQL stock screening for Indian markets.",
@@ -37,7 +40,12 @@ def main():
 
     user_question = " ".join(args.query)
 
-    cfg = Config()
+    try:
+        cfg = Config()
+    except ConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
     if args.limit is not None:
         cfg.max_rows = args.limit
 
