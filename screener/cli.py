@@ -61,6 +61,9 @@ def main():
         sys.exit(1)
 
     if not rows:
+        if screener.warnings:
+            for w in screener.warnings:
+                print(f"Warning: {w}", file=sys.stderr)
         print("No stocks matched.", file=sys.stderr)
         sys.exit(0)
 
@@ -70,6 +73,9 @@ def main():
         _format_table(columns, rows)
 
     print(f"{len(rows)} rows", file=sys.stderr)
+    if screener.warnings:
+        for w in screener.warnings:
+            print(f"Warning: {w}", file=sys.stderr)
     sys.exit(0)
 
 

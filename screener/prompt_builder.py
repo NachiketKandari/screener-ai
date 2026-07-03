@@ -25,7 +25,11 @@ SQLITE_RULES = """[SQLITE RULES]
 - Booleans are 1/0, not TRUE/FALSE.
 - Always LIMIT results — never FETCH FIRST or TOP.
 - IFNULL() or COALESCE() for null handling, not NVL() or ISNULL().
-- No SERIAL, no AUTO_INCREMENT — this is a read-only query, no DDL."""
+- No SERIAL, no AUTO_INCREMENT — this is a read-only query, no DDL.
+- CRITICAL: Most numeric columns (pe_ratio, roe_pct, debt_to_equity, eps_ttm,
+  etc.) are nullable. NULL < X is NULL (not true), so WHERE pe_ratio < 15
+  silently excludes stocks with no PE. Always add IS NOT NULL or > 0 when
+  filtering nullable columns: WHERE pe_ratio < 15 AND pe_ratio > 0."""
 
 
 class PromptBuilder:

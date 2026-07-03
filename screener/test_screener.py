@@ -1,6 +1,6 @@
 import sqlite3
 import pytest
-from screener.screener import Screener, QueryError
+from screener.screener import Screener, QueryError, _check_null_safety
 from screener.config import Config
 from screener.prompt_builder import PromptBuilder
 
@@ -159,3 +159,50 @@ def test_screener_readonly_prevents_writes(test_db):
     with pytest.raises(QueryError) as exc:
         screener.query("test")
     assert exc.value.exit_code == 3
+
+
+class TestNullSafety:
+    def test_warns_on_unguarded_nullable_column(self):
+        sql = "SELECT * FROM stock_fundamentals WHERE pe_ratio < 15"
+        warnings = _check_null_safety(sql)
+        assert any("pe_ratio" in w for w in warnings)
+
+    def test_no_warning_when_guarded_by_is_not_null(self):
+        sql = "SELECT * FROM stock_fundamentals WHERE pe_ratio < 15 AND pe_ratio IS NOT NULL"
+        warnings = _check_null_safety(sql)
+        assert not any("pe_ratio" in w for w in warnings)
+
+    def test_no_warning_when_guarded_by_gt_zero(self):
+        sql = "SELECT * FROM stock_fundamentals WHERE pe_ratio < 15 AND pe_ratio > 0"
+        warnings = _check_null_safety(sql)
+        assert not any("pe_ratio" in w for w in warnings)
+
+    def test_no_warning_on_non_nullable_column(self):
+        sql = "SELECT * FROM stock_fundamentals WHERE ticker = 'TCS'"
+        warnings = _check_null_safety(sql)
+        assert warnings == []
+
+    def test_no_warning_without_where_clause(self):
+        sql = "SELECT * FROM stock_fundamentals"
+        warnings = _check_null_safety(sql)
+        assert warnings == []
+
+    def test_warns_on_multiple_unguarded_columns(self):
+        sql = "SELECT * FROM stock_fundamentals WHERE roe_pct > 20 AND debt_to_equity < 1"
+        warnings = _check_null_safety(sql)
+        assert any("roe_pct" in w for w in warnings)
+        assert any("debt_to_equity" in w for w in warnings)
+
+    def test_is_null_counts_as_guard(self):
+        sql = "SELECT * FROM stock_fundamentals WHERE pe_ratio IS NULL"
+        warnings = _check_null_safety(sql)
+        assert not any("pe_ratio" in w for w in warnings)
+
+    def test_warnings_set_on_screener_after_query(self, test_db):
+        cfg = FakeConfig(test_db)
+        llm = FakeLLM(
+            "SELECT ticker, pe_ratio FROM stock_fundamentals WHERE pe_ratio < 30"
+        )
+        screener = Screener(cfg, prompt_builder=PromptBuilder(), llm_callable=llm)
+        screener.query("cheap stocks")
+        assert any("pe_ratio" in w for w in screener.warnings)

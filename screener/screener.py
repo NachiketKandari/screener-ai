@@ -5,6 +5,7 @@ import sqlite3
 from typing import Any
 
 import sqlglot
+import sqlglot.expressions as exp
 
 from screener.config import Config
 from screener.prompt_builder import PromptBuilder
@@ -26,6 +27,7 @@ class Screener:
     ):
         self._cfg = config
         self._prompt_builder = prompt_builder or PromptBuilder()
+        self.warnings: list[str] = []
         if llm_callable is not None:
             self._llm = llm_callable
         else:
@@ -71,6 +73,8 @@ class Screener:
                 exit_code=3,
                 sql=sql,
             )
+
+        self.warnings = _check_null_safety(sql)
 
         # Execute
         try:
@@ -131,3 +135,62 @@ def _llm_call(
         temperature=0.0,
     )
     return response.choices[0].message.content
+
+
+# Columns that frequently have NULL in the data (all fundamentals except identity)
+_NULLABLE_COLUMNS = frozenset({
+    "pe_ratio", "forward_pe", "pb_ratio", "peg_ratio", "price_to_sales",
+    "eps_ttm", "eps_forward", "book_value_per_share", "revenue_per_share",
+    "roe_pct", "roa_pct", "profit_margins_pct", "operating_margins_pct",
+    "gross_margins_pct", "ebitda_margins_pct",
+    "revenue_growth_pct", "earnings_growth_pct", "earnings_quarterly_growth_pct",
+    "debt_to_equity", "current_ratio", "quick_ratio", "payout_ratio",
+    "dividend_yield_pct", "five_year_avg_dividend_yield_pct",
+    "beta",
+    "target_mean_price", "target_high_price", "target_low_price",
+    "recommendation", "number_of_analysts",
+    "held_pct_insiders", "held_pct_institutions",
+    "free_cashflow", "operating_cashflow", "total_cash_per_share",
+    "total_debt", "total_revenue", "ebitda",
+})
+
+
+def _check_null_safety(sql: str) -> list[str]:
+    """Check WHERE clause for nullable columns used without IS NOT NULL / > 0 guards."""
+    try:
+        tree = sqlglot.parse_one(sql)
+    except Exception:
+        return []
+
+    where = tree.find(exp.Where)
+    if not where:
+        return []
+
+    columns: set[str] = set()
+    guarded: set[str] = set()
+
+    for node in where.walk():
+        if isinstance(node, exp.Column):
+            col = node.name.lower()
+            if col in _NULLABLE_COLUMNS:
+                columns.add(col)
+        elif isinstance(node, exp.Is):
+            if isinstance(node.this, exp.Column):
+                guarded.add(node.this.name.lower())
+        elif isinstance(node, (exp.GT, exp.GTE)):
+            if isinstance(node.left, exp.Column) and _is_zero(node.right):
+                guarded.add(node.left.name.lower())
+
+    unguarded = columns - guarded
+    if not unguarded:
+        return []
+
+    return [
+        f"'{c}' used in WHERE without IS NOT NULL or > 0 "
+        f"— rows with NULL {c} are silently excluded"
+        for c in sorted(unguarded)
+    ]
+
+
+def _is_zero(node: exp.Expression) -> bool:
+    return isinstance(node, exp.Literal) and node.this in ("0", "0.0")
