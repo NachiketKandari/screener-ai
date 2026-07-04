@@ -6,6 +6,7 @@ import {
   DEFAULT_METRIC_IDS,
   createEmptyChip,
   serializeChipsToFilterSpec,
+  getMetric,
 } from "@/lib/filter-registry";
 import { FilterChip } from "@/components/filter-chip";
 import { AddFilterDropdown } from "@/components/add-filter-dropdown";
@@ -59,6 +60,7 @@ export function FilterBar({ options, filters, onChange, onClear }: Props) {
   chipsRef.current = chips;
 
   const hasFilters = chips.some((c) => {
+    if (getMetric(c.metricId)?.type === "boolean") return true;
     if (c.value.trim()) return true;
     if (c.valueEnd?.trim()) return true;
     return false;

@@ -23,7 +23,7 @@ export const FILTER_REGISTRY: FilterMetricDef[] = [
     type: "enum_multi",
     unit: "",
     category: "Identity",
-    operators: ["=", "!="],
+    operators: ["="],
     defaultOperator: "=",
     primaryField: "sectors",
   },
@@ -34,7 +34,7 @@ export const FILTER_REGISTRY: FilterMetricDef[] = [
     type: "enum_multi",
     unit: "",
     category: "Identity",
-    operators: ["=", "!="],
+    operators: ["="],
     defaultOperator: "=",
     primaryField: "industries",
   },
@@ -45,7 +45,7 @@ export const FILTER_REGISTRY: FilterMetricDef[] = [
     type: "text",
     unit: "",
     category: "Identity",
-    operators: ["=", "contains"],
+    operators: ["="],
     defaultOperator: "=",
     primaryField: "ticker",
   },
@@ -342,7 +342,8 @@ export const DEFAULT_METRIC_IDS = [
 
 function toNum(v: string): number | undefined {
   const n = parseFloat(v);
-  return isNaN(n) ? undefined : n;
+  if (isNaN(n) || !isFinite(n)) return undefined;
+  return n;
 }
 
 export function serializeChipsToFilterSpec(

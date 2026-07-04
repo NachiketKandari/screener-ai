@@ -124,6 +124,7 @@ export default function ScreenerPage() {
   }, []);
 
   const clearAll = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     dispatch({ type: "RESET_FILTERS" });
     fetchResults(DEFAULT_FILTERS);
   }, [fetchResults]);

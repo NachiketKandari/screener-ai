@@ -286,7 +286,6 @@ function SingleNumberValue({
           value: e.target.value,
         })
       }
-      min={0}
       step="any"
     />
   );
@@ -312,7 +311,6 @@ function RangeValue({
           className="text-sm bg-transparent border-0 px-1 py-0 focus:outline-none w-20 placeholder:text-muted-foreground/50"
           value={chip.value}
           onChange={(e) => onChange(chip.id, { value: e.target.value })}
-          min={0}
           step="any"
         />
         <span className="text-muted-foreground text-xs">—</span>
@@ -322,7 +320,6 @@ function RangeValue({
           className="text-sm bg-transparent border-0 px-1 py-0 focus:outline-none w-20 placeholder:text-muted-foreground/50"
           value={chip.valueEnd ?? ""}
           onChange={(e) => onChange(chip.id, { valueEnd: e.target.value })}
-          min={0}
           step="any"
         />
       </span>
@@ -337,7 +334,6 @@ function RangeValue({
       className="text-sm bg-transparent border-0 px-1 py-0 focus:outline-none w-20 placeholder:text-muted-foreground/50"
       value={chip.value}
       onChange={(e) => onChange(chip.id, { value: e.target.value })}
-      min={0}
       step="any"
     />
   );
