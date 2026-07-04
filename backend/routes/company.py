@@ -6,6 +6,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from backend.limiter import limiter
 from common.database import get_connection
 from common.types import (
     AnalystData,
@@ -62,6 +63,7 @@ def _prev_close(conn, ticker: str, latest_date: str | None) -> float | None:
 # ---------------------------------------------------------------------------
 
 @router.get("/company/{ticker}", response_model=CompanyResponse)
+@limiter.limit("100/minute")
 def get_company(request: Request, ticker: str) -> CompanyResponse:
     start = time.perf_counter()
     db_path: str = request.app.state.db_path
@@ -204,6 +206,7 @@ def get_company(request: Request, ticker: str) -> CompanyResponse:
 # ---------------------------------------------------------------------------
 
 @router.get("/company/{ticker}/chart", response_model=ChartResponse)
+@limiter.limit("100/minute")
 def get_company_chart(
     request: Request,
     ticker: str,
@@ -267,6 +270,7 @@ def get_company_chart(
 # ---------------------------------------------------------------------------
 
 @router.get("/company/{ticker}/peers", response_model=PeerResponse)
+@limiter.limit("100/minute")
 def get_company_peers(
     request: Request,
     ticker: str,

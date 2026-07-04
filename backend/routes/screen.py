@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from backend.limiter import limiter
 from common.database import get_connection
 from common.filters import build_count_query, build_screen_query
 from common.types import (
@@ -26,6 +27,7 @@ logger = logging.getLogger("strattest.backend.screen")
 # ---------------------------------------------------------------------------
 
 @router.get("/screen", response_model=ScreenResponse)
+@limiter.limit("30/minute")
 def screen_stocks(
     request: Request,
     sectors: list[str] | None = Query(None),
@@ -149,6 +151,7 @@ def screen_stocks(
 # ---------------------------------------------------------------------------
 
 @router.post("/screen/nl", response_model=NLScreenResponse)
+@limiter.limit("10/hour")
 def screen_natural_language(
     request: Request, body: NLScreenRequest
 ) -> NLScreenResponse:

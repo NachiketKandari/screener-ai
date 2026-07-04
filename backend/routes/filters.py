@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Request
 
+from backend.limiter import limiter
 from common.database import get_connection
 from common.types import FilterOptions, HealthResponse
 
@@ -28,6 +29,7 @@ SORT_COLUMNS_UI: list[dict] = [
 
 
 @router.get("/filters/options", response_model=FilterOptions)
+@limiter.limit("100/minute")
 def filter_options(request: Request) -> FilterOptions:
     db_path = request.app.state.db_path
     conn = get_connection(db_path, readonly=True)

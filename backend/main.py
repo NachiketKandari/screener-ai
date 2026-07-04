@@ -9,8 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+
+from backend.limiter import limiter
 
 load_dotenv()
 
@@ -77,12 +81,21 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Strattest API", version="1.0.0", lifespan=lifespan)
 
+    app.state.limiter = limiter
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # Frontend on Vercel, dev on localhost
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please retry later."},
+        )
 
     app.state.db_path = os.environ.get("STRATTEST_DB_PATH", "db/strattest.db")
     if not os.path.isabs(app.state.db_path):
