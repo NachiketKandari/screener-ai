@@ -26,44 +26,8 @@ from common.types import (
 router = APIRouter(prefix="/api", tags=["company"])
 logger = logging.getLogger("strattest.backend.company")
 
-RANGE_CONFIG = {
-    "1mo": ("-1 months", "daily"),
-    "6mo": ("-6 months", "daily"),
-    "1y": ("-1 years", "daily"),
-    "3y": ("-3 years", "weekly"),
-    "5y": ("-5 years", "weekly"),
-    "max": (None, "monthly"),
-}
-
-BUCKET_SQL = {
-    "daily": "SELECT date, open, high, low, close, volume FROM eod_prices WHERE ticker = ? AND date >= ? ORDER BY date ASC",
-    "weekly": """
-        SELECT
-            MIN(date) AS date,
-            (SELECT open FROM eod_prices ep2 WHERE ep2.ticker = eod_prices.ticker AND ep2.date = MIN(eod_prices.date)) AS open,
-            MAX(high) AS high,
-            MIN(low) AS low,
-            (SELECT close FROM eod_prices ep2 WHERE ep2.ticker = eod_prices.ticker AND ep2.date = MAX(eod_prices.date)) AS close,
-            SUM(volume) AS volume
-        FROM eod_prices
-        WHERE ticker = ? AND date >= ?
-        GROUP BY strftime('%Y-%W', date)
-        ORDER BY date ASC
-    """,
-    "monthly": """
-        SELECT
-            MIN(date) AS date,
-            (SELECT open FROM eod_prices ep2 WHERE ep2.ticker = eod_prices.ticker AND ep2.date = MIN(eod_prices.date)) AS open,
-            MAX(high) AS high,
-            MIN(low) AS low,
-            (SELECT close FROM eod_prices ep2 WHERE ep2.ticker = eod_prices.ticker AND ep2.date = MAX(eod_prices.date)) AS close,
-            SUM(volume) AS volume
-        FROM eod_prices
-        WHERE ticker = ?
-        GROUP BY strftime('%Y-%m', date)
-        ORDER BY date ASC
-    """,
-}
+CHART_SQL = "SELECT date, open, high, low, close, volume FROM eod_prices WHERE ticker = ? AND date >= ? ORDER BY date ASC"
+CHART_SQL_ALL = "SELECT date, open, high, low, close, volume FROM eod_prices WHERE ticker = ? ORDER BY date ASC"
 
 
 def _latest_eod(conn, ticker: str) -> dict:
@@ -257,17 +221,14 @@ def get_company_chart(
         if exists is None:
             raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found")
 
-        _, bucket = RANGE_CONFIG[range]
-        sql = BUCKET_SQL[bucket]
-
         if range == "max":
-            params = [ticker.upper()]
+            sql, params = CHART_SQL_ALL, [ticker.upper()]
         else:
-            date_expr = RANGE_CONFIG[range][0]
+            date_mod = {"1mo": "-1 months", "6mo": "-6 months", "1y": "-1 years", "3y": "-3 years", "5y": "-5 years"}[range]
             cutoff = conn.execute(
-                "SELECT date(?, ?)", [sqlite3.datetime.date.today().isoformat(), date_expr]
+                "SELECT date(?, ?)", [sqlite3.datetime.date.today().isoformat(), date_mod]
             ).fetchone()[0]
-            params = [ticker.upper(), cutoff]
+            sql, params = CHART_SQL, [ticker.upper(), cutoff]
 
         rows = conn.execute(sql, params).fetchall()
 
