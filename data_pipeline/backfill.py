@@ -1,6 +1,7 @@
 """One-time backfill: pull 5-year OHLCV + fundamentals for all NSE stocks via yfinance."""
 
 import sqlite3
+import sys
 import time
 from datetime import datetime, date
 from pathlib import Path
@@ -8,6 +9,12 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 from nselib import capital_market
+
+_repo_root = Path(__file__).parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from common.database import get_connection
 
 
 DB_PATH = Path(__file__).parent.parent / "db" / "strattest.db"
@@ -47,7 +54,7 @@ def already_done():
     """Return set of tickers already backfilled (to support resume)."""
     if not DB_PATH.exists():
         return set()
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=True) as conn:
         try:
             cursor = conn.execute("SELECT DISTINCT ticker FROM eod_prices")
             return {row[0] for row in cursor.fetchall()}
@@ -68,7 +75,7 @@ def backfill_ohlcv(tickers: list[str]):
     total_batches = (len(remaining) + BATCH_SIZE - 1) // BATCH_SIZE
     yf_symbols = [f"{t}.NS" for t in remaining]
 
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=False) as conn:
         for batch_idx in range(0, len(yf_symbols), BATCH_SIZE):
             batch = yf_symbols[batch_idx : batch_idx + BATCH_SIZE]
             batch_num = batch_idx // BATCH_SIZE + 1
@@ -138,6 +145,7 @@ def backfill_ohlcv(tickers: list[str]):
                     continue
 
             conn.commit()
+            conn.sync()
             pct = min(100, (batch_idx + BATCH_SIZE) / len(yf_symbols) * 100)
             print(f"  Batch {batch_num}/{total_batches}: {len(batch)} stocks, {rows_inserted} rows "
                   f"({pct:.0f}%)")
@@ -154,11 +162,11 @@ def backfill_fundamentals(tickers: list[str]):
     # Check which tickers already have fundamentals
     existing = set()
     if DB_PATH.exists():
-        with sqlite3.connect(str(DB_PATH)) as conn:
+        with get_connection(str(DB_PATH), readonly=True) as conn:
             try:
                 cursor = conn.execute("SELECT ticker FROM stock_fundamentals")
                 existing = {row[0] for row in cursor.fetchall()}
-            except sqlite3.OperationalError:
+            except Exception:
                 pass
 
     yf_symbols = [f"{t}.NS" for t in tickers if t not in existing]
@@ -174,7 +182,7 @@ def backfill_fundamentals(tickers: list[str]):
     BATCH_BREAK_EVERY = 200  # take a longer break every N stocks
     BATCH_BREAK_SECS = 30
 
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=False) as conn:
         for i, sym in enumerate(yf_symbols):
             ticker_name = sym.replace(".NS", "")
 
@@ -292,6 +300,7 @@ def backfill_fundamentals(tickers: list[str]):
 
             if (i + 1) % 50 == 0 or i == len(yf_symbols) - 1:
                 conn.commit()
+                conn.sync()
                 print(f"  {i + 1}/{len(yf_symbols)} fundamentals done ({(i + 1) / len(yf_symbols) * 100:.0f}%)")
 
             time.sleep(FUNDA_DELAY)
@@ -305,7 +314,7 @@ def backfill_fundamentals(tickers: list[str]):
 
 
 def print_summary():
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=True) as conn:
         stocks = conn.execute("SELECT COUNT(DISTINCT ticker) FROM eod_prices").fetchone()[0]
         rows = conn.execute("SELECT COUNT(*) FROM eod_prices").fetchone()[0]
         daterange = conn.execute(

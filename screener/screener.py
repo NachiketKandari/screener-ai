@@ -1,12 +1,12 @@
 """Core orchestrator: build prompt -> LLM -> validate -> execute."""
 
 import re
-import sqlite3
 from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
 
+from common.database import get_connection
 from screener.config import Config
 from screener.prompt_builder import PromptBuilder
 
@@ -78,24 +78,19 @@ class Screener:
 
         # Execute
         try:
-            conn = sqlite3.connect(
-                f"file:{self._cfg.db_path_absolute}?mode=ro", uri=True
-            )
-            conn.execute("PRAGMA query_only = ON")
-        except sqlite3.OperationalError as e:
+            conn = get_connection(self._cfg.db_path_absolute, readonly=True)
+        except Exception as e:
             raise QueryError(
                 f"Cannot open database: {e}", exit_code=3, sql=sql
             )
 
         try:
-            conn.execute(f"PRAGMA busy_timeout = {self._cfg.query_timeout * 1000}")
-            # Add LIMIT if not present
             if "LIMIT" not in sql.upper():
                 sql = sql.rstrip(";") + f" LIMIT {self._cfg.max_rows}"
             cursor = conn.execute(sql)
             columns = tuple(d[0] for d in cursor.description) if cursor.description else ()
             rows = cursor.fetchall()
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             raise QueryError(
                 f"Query execution failed: {e}\n\nSQL:\n{sql}",
                 exit_code=3,

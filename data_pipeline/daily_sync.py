@@ -1,11 +1,17 @@
 """Daily EOD sync: update today's OHLCV + refresh fundamentals weekly."""
 
-import sqlite3
+import sys
 import time
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import yfinance as yf
+
+_repo_root = Path(__file__).parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from common.database import get_connection
 
 
 DB_PATH = Path(__file__).parent.parent / "db" / "strattest.db"
@@ -15,14 +21,14 @@ FUNDAMENTALS_REFRESH_DAYS = 7  # Refresh fundamentals weekly
 
 def get_tracked_tickers():
     """Get all tickers already in the database."""
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=True) as conn:
         cursor = conn.execute("SELECT DISTINCT ticker FROM eod_prices")
         return sorted([row[0] for row in cursor.fetchall()])
 
 
 def get_last_date():
     """Get the most recent date in eod_prices."""
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=True) as conn:
         cursor = conn.execute("SELECT MAX(date) FROM eod_prices")
         return cursor.fetchone()[0]
 
@@ -46,7 +52,7 @@ def sync_ohlcv(tickers: list[str]):
 
     yf_symbols = [f"{t}.NS" for t in tickers]
 
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=False) as conn:
         for batch_idx in range(0, len(yf_symbols), BATCH_SIZE):
             batch = yf_symbols[batch_idx : batch_idx + BATCH_SIZE]
 
@@ -102,6 +108,7 @@ def sync_ohlcv(tickers: list[str]):
                     continue
 
             conn.commit()
+            conn.sync()
             print(f"  Batch {batch_idx // BATCH_SIZE + 1}: {rows} rows")
 
     print("OHLCV sync complete.")
@@ -109,7 +116,7 @@ def sync_ohlcv(tickers: list[str]):
 
 def should_refresh_fundamentals():
     """Check if fundamentals need a refresh (weekly)."""
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=True) as conn:
         cursor = conn.execute("SELECT MAX(as_of_date) FROM stock_fundamentals")
         last = cursor.fetchone()[0]
         if not last:
@@ -127,7 +134,7 @@ def sync_fundamentals(tickers: list[str]):
     print(f"Refreshing fundamentals for {len(tickers)} stocks...")
     today = date.today().isoformat()
 
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=False) as conn:
         for i, t in enumerate(tickers):
             sym = f"{t}.NS"
             try:
@@ -200,6 +207,7 @@ def sync_fundamentals(tickers: list[str]):
 
                 if (i + 1) % 100 == 0:
                     conn.commit()
+                    conn.sync()
                     print(f"  {i + 1}/{len(tickers)} refreshed")
 
             except Exception as e:
@@ -208,6 +216,7 @@ def sync_fundamentals(tickers: list[str]):
             time.sleep(0.3)
 
         conn.commit()
+        conn.sync()
     print("Fundamentals sync complete.")
 
 
@@ -230,7 +239,7 @@ def main():
     sync_fundamentals(tickers)
 
     # Print summary
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with get_connection(str(DB_PATH), readonly=True) as conn:
         rows = conn.execute("SELECT COUNT(*) FROM eod_prices").fetchone()[0]
         latest = conn.execute("SELECT MAX(date) FROM eod_prices").fetchone()[0]
     print(f"\nDone. {rows:,} OHLCV rows, latest date: {latest}")

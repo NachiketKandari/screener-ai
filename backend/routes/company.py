@@ -1,8 +1,8 @@
 """Company detail endpoints."""
 
 import logging
-import sqlite3
 import time
+from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -229,7 +229,7 @@ def get_company_chart(
         else:
             date_mod = {"1mo": "-1 months", "6mo": "-6 months", "1y": "-1 years", "3y": "-3 years", "5y": "-5 years"}[range]
             cutoff = conn.execute(
-                "SELECT date(?, ?)", [sqlite3.datetime.date.today().isoformat(), date_mod]
+                "SELECT date(?, ?)", [date.today().isoformat(), date_mod]
             ).fetchone()[0]
             sql, params = CHART_SQL, [ticker.upper(), cutoff]
 
