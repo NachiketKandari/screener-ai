@@ -98,6 +98,10 @@ export function CompanyChart({ chart, ticker, onRangeChange, onLoad, expanded }:
       }
 
       chartInstance.timeScale().fitContent();
+      chartInstance.timeScale().applyOptions({
+        fixLeftEdge: true,
+        fixRightEdge: true,
+      });
 
       const handleResize = () => {
         chartInstance.applyOptions({ width: el.clientWidth });

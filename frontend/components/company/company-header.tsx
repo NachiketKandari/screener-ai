@@ -2,6 +2,15 @@ import { CompanyResponse } from "@/lib/types";
 import { fmtPrice, fmtChangePct, fmtVolume } from "@/lib/format";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
+const EXCHANGE_LABELS: Record<string, string> = {
+  NSI: "NSE",
+  BSE: "BSE",
+};
+
+function exchangeLabel(code: string): string {
+  return EXCHANGE_LABELS[code] || code;
+}
+
 export function CompanyHeader({ company }: { company: CompanyResponse }) {
   const { price } = company;
   const changeInfo = fmtChangePct(price.change_pct);
@@ -18,7 +27,7 @@ export function CompanyHeader({ company }: { company: CompanyResponse }) {
         </span>
         {company.exchange && (
           <span className="text-xs text-muted-foreground border px-1.5 py-0.5 rounded">
-            {company.exchange}
+            {exchangeLabel(company.exchange)}
           </span>
         )}
         {company.sector && (
