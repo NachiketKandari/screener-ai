@@ -2,6 +2,7 @@
 
 import { SkeletonTable } from "./skeleton-table";
 import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -123,18 +124,43 @@ export function ResultsTable({
             {loading ? (
               <SkeletonTable rows={Math.min(limit, 10)} cols={columns.length} />
             ) : (
-              rows.map((row, i) => (
-                <tr
-                  key={i}
-                  className="border-b last:border-0 hover:bg-muted/30 transition-colors"
-                >
-                  {row.map((cell, j) => (
-                    <td key={j} className="px-4 py-2.5 whitespace-nowrap">
-                      {formatCell(cell)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              rows.map((row, i) => {
+                const tickerIndex = columns.indexOf("ticker");
+                const companyIndex = columns.indexOf("company_name");
+                const ticker = tickerIndex >= 0 ? String(row[tickerIndex] || "") : "";
+
+                return (
+                  <tr
+                    key={i}
+                    className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => {
+                      if (ticker) window.location.href = `/company/${encodeURIComponent(ticker)}`;
+                    }}
+                  >
+                    {row.map((cell, j) => {
+                      const isTickerCol = j === tickerIndex;
+                      const isCompanyCol = j === companyIndex;
+                      const isLink = isTickerCol || isCompanyCol;
+
+                      return (
+                        <td key={j} className={`px-4 py-2.5 whitespace-nowrap ${isLink ? "text-primary" : ""}`}>
+                          {isLink && ticker ? (
+                            <Link
+                              href={`/company/${encodeURIComponent(ticker)}`}
+                              className="hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {formatCell(cell)}
+                            </Link>
+                          ) : (
+                            formatCell(cell)
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

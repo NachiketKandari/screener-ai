@@ -55,6 +55,13 @@ def _schema_sql() -> str:
 
 
 @pytest.fixture
+def test_db_path(tmp_path: Path) -> str:
+    """Return a temporary database path for tests that manage their own schema."""
+    db_path = tmp_path / "test.db"
+    return str(db_path)
+
+
+@pytest.fixture
 def test_db(tmp_path: Path, _schema_sql: str) -> str:
     """Create a temporary SQLite database with the full schema and test data."""
     db_path = tmp_path / "test.db"

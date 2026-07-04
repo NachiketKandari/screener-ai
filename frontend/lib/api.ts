@@ -1,4 +1,4 @@
-import { ScreenResponse, FilterOptions, HealthResponse } from "@/lib/types";
+import { ScreenResponse, FilterOptions, HealthResponse, CompanyResponse, ChartResponse, PeerResponse } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -42,5 +42,33 @@ export async function fetchFilterOptions(): Promise<FilterOptions> {
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch(`${API_URL}/api/health`);
   if (!res.ok) throw new Error("Health check failed");
+  return res.json();
+}
+
+export async function fetchCompany(ticker: string): Promise<CompanyResponse> {
+  const res = await fetch(`${API_URL}/api/company/${encodeURIComponent(ticker)}`);
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("NOT_FOUND");
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "API error");
+  }
+  return res.json();
+}
+
+export async function fetchChart(ticker: string, range: string = "1y"): Promise<ChartResponse> {
+  const res = await fetch(`${API_URL}/api/company/${encodeURIComponent(ticker)}/chart?range=${range}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "API error");
+  }
+  return res.json();
+}
+
+export async function fetchPeers(ticker: string, limit: number = 10): Promise<PeerResponse> {
+  const res = await fetch(`${API_URL}/api/company/${encodeURIComponent(ticker)}/peers?limit=${limit}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "API error");
+  }
   return res.json();
 }

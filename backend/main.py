@@ -88,10 +88,11 @@ def create_app() -> FastAPI:
     if not os.path.isabs(app.state.db_path):
         app.state.db_path = str(_repo_root / app.state.db_path)
 
-    from backend.routes import screen, filters  # noqa: E402
+    from backend.routes import screen, filters, company  # noqa: E402
 
     app.include_router(screen.router)
     app.include_router(filters.router)
+    app.include_router(company.router)
 
     return app
 
