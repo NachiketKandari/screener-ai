@@ -1,8 +1,15 @@
 "use client";
 
-import { FilterSpec, FilterOptions } from "@/lib/types";
+import { useReducer, useCallback, useRef, useEffect } from "react";
+import { FilterSpec, FilterOptions, FilterChipState } from "@/lib/types";
+import {
+  DEFAULT_METRIC_IDS,
+  createEmptyChip,
+  serializeChipsToFilterSpec,
+} from "@/lib/filter-registry";
+import { FilterChip } from "@/components/filter-chip";
+import { AddFilterDropdown } from "@/components/add-filter-dropdown";
 import { Button } from "@/components/ui/button";
-import { MultiSelect } from "@/components/ui/multi-select";
 import { X } from "lucide-react";
 
 interface Props {
@@ -12,104 +19,132 @@ interface Props {
   onClear: () => void;
 }
 
+// ── Chip reducer ──────────────────────────────────────────────────────
+
+type ChipAction =
+  | { type: "UPDATE_CHIP"; id: string; updates: Partial<FilterChipState> }
+  | { type: "REMOVE_CHIP"; id: string }
+  | { type: "ADD_CHIP"; metricId: string }
+  | { type: "RESET" };
+
+function initChips(): FilterChipState[] {
+  return DEFAULT_METRIC_IDS
+    .map((id) => createEmptyChip(id))
+    .filter((c): c is FilterChipState => c !== null);
+}
+
+function chipsReducer(
+  state: FilterChipState[],
+  action: ChipAction,
+): FilterChipState[] {
+  switch (action.type) {
+    case "UPDATE_CHIP":
+      return state.map((c) =>
+        c.id === action.id ? { ...c, ...action.updates } : c,
+      );
+    case "REMOVE_CHIP":
+      return state.filter((c) => c.id !== action.id);
+    case "ADD_CHIP": {
+      const chip = createEmptyChip(action.metricId);
+      return chip ? [...state, chip] : state;
+    }
+    case "RESET":
+      return initChips();
+  }
+}
+
 export function FilterBar({ options, filters, onChange, onClear }: Props) {
-  const hasFilters = Object.entries(filters).some(([k, v]) => {
-    if (["sort_by", "sort_dir", "limit", "offset"].includes(k)) return false;
-    if (Array.isArray(v)) return v.length > 0;
-    return v !== undefined && v !== null && v !== "" && v !== false;
+  const [chips, dispatch] = useReducer(chipsReducer, null, initChips);
+  const chipsRef = useRef(chips);
+  chipsRef.current = chips;
+
+  const hasFilters = chips.some((c) => {
+    if (c.value.trim()) return true;
+    if (c.valueEnd?.trim()) return true;
+    return false;
   });
+
+  // Sync chips → parent FilterSpec
+  const syncToParent = useCallback(
+    (nextChips: FilterChipState[]) => {
+      const partial = serializeChipsToFilterSpec(nextChips);
+      onChange(partial);
+    },
+    [onChange],
+  );
+
+  // Wrap dispatch to auto-sync
+  const dispatchAndSync = useCallback(
+    (action: ChipAction) => {
+      dispatch(action);
+
+      // Compute next state manually since dispatch is async
+      const next = (() => {
+        switch (action.type) {
+          case "UPDATE_CHIP":
+            return chipsRef.current.map((c) =>
+              c.id === action.id ? { ...c, ...action.updates } : c,
+            );
+          case "REMOVE_CHIP":
+            return chipsRef.current.filter((c) => c.id !== action.id);
+          case "ADD_CHIP": {
+            const chip = createEmptyChip(action.metricId);
+            return chip ? [...chipsRef.current, chip] : chipsRef.current;
+          }
+          case "RESET":
+            return initChips();
+        }
+      })();
+
+      chipsRef.current = next;
+      syncToParent(next);
+    },
+    [syncToParent],
+  );
+
+  // Initial sync on mount
+  useEffect(() => {
+    syncToParent(chips);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClearAll = useCallback(() => {
+    dispatchAndSync({ type: "RESET" });
+    onClear();
+  }, [dispatchAndSync, onClear]);
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-3 items-end">
-        <MultiSelect
-          label="Sectors"
-          options={options.sectors}
-          selected={filters.sectors || []}
-          onChange={(selected) => onChange({ sectors: selected.length > 0 ? selected : undefined })}
-        />
-
-        {/* P/E Range */}
-        <RangeFilter
-          label="P/E"
-          minValue={filters.pe_min}
-          maxValue={filters.pe_max}
-          onMinChange={v => onChange({ pe_min: v || undefined })}
-          onMaxChange={v => onChange({ pe_max: v || undefined })}
-        />
-
-        {/* ROE */}
-        <RangeFilter
-          label="ROE %"
-          minValue={filters.roe_min}
-          maxValue={undefined}
-          onMinChange={v => onChange({ roe_min: v || undefined })}
-          onMaxChange={() => {}}
-        />
-
-        {/* Market Cap */}
-        <RangeFilter
-          label="Market Cap (Cr)"
-          minValue={filters.market_cap_min}
-          maxValue={filters.market_cap_max}
-          onMinChange={v => onChange({ market_cap_min: v || undefined })}
-          onMaxChange={v => onChange({ market_cap_max: v || undefined })}
-        />
-
-        {/* Search */}
-        <div className="flex flex-col gap-1 min-w-[160px]">
-          <label className="text-xs font-medium text-muted-foreground">Company</label>
-          <input
-            type="text"
-            placeholder="Search..."
-            className="border rounded-md px-2 py-1.5 text-sm bg-background"
-            value={filters.search || ""}
-            onChange={e => onChange({ search: e.target.value || undefined })}
+      <div className="flex flex-wrap gap-2 items-center">
+        {chips.map((chip) => (
+          <FilterChip
+            key={chip.id}
+            chip={chip}
+            options={options}
+            onChange={(id, updates) =>
+              dispatchAndSync({ type: "UPDATE_CHIP", id, updates })
+            }
+            onRemove={(id) => dispatchAndSync({ type: "REMOVE_CHIP", id })}
           />
-        </div>
+        ))}
+
+        <AddFilterDropdown
+          activeChips={chips}
+          onAdd={(metricId) =>
+            dispatchAndSync({ type: "ADD_CHIP", metricId })
+          }
+        />
 
         {hasFilters && (
-          <Button variant="outline" size="sm" onClick={onClear} className="gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearAll}
+            className="gap-1 h-8"
+          >
             <X className="h-3 w-3" /> Clear All
           </Button>
         )}
-      </div>
-    </div>
-  );
-}
-
-function RangeFilter({
-  label,
-  minValue,
-  maxValue,
-  onMinChange,
-  onMaxChange,
-}: {
-  label: string;
-  minValue?: number;
-  maxValue?: number;
-  onMinChange: (v: number | undefined) => void;
-  onMaxChange: (v: number | undefined) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1 min-w-[140px]">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
-      <div className="flex gap-1 items-center">
-        <input
-          type="number"
-          placeholder="Min"
-          className="border rounded-md px-2 py-1.5 text-sm bg-background w-full"
-          value={minValue ?? ""}
-          onChange={e => onMinChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-        />
-        <span className="text-muted-foreground text-xs">—</span>
-        <input
-          type="number"
-          placeholder="Max"
-          className="border rounded-md px-2 py-1.5 text-sm bg-background w-full"
-          value={maxValue ?? ""}
-          onChange={e => onMaxChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-        />
       </div>
     </div>
   );

@@ -53,3 +53,46 @@ export interface HealthResponse {
   db_size_mb: number | null;
   stale: boolean;
 }
+
+// ── Filter Builder types ─────────────────────────────────────────────
+
+export type FilterOperator = ">" | "<" | "=" | "!=" | "between" | "contains";
+
+export type FilterFieldType =
+  | "numeric_range"
+  | "numeric_min"
+  | "numeric_max"
+  | "enum_multi"
+  | "boolean"
+  | "text";
+
+export type FilterCategory =
+  | "Identity"
+  | "Valuation"
+  | "Profitability"
+  | "Growth"
+  | "Financial Health"
+  | "Ownership"
+  | "Price & Technical";
+
+export interface FilterMetricDef {
+  id: string;
+  label: string;
+  shortLabel: string;
+  type: FilterFieldType;
+  unit: string;
+  category: FilterCategory;
+  operators: FilterOperator[];
+  defaultOperator: FilterOperator;
+  primaryField: keyof FilterSpec;
+  secondaryField?: keyof FilterSpec;
+  placeholder?: string;
+}
+
+export interface FilterChipState {
+  id: string;
+  metricId: string;
+  operator: FilterOperator;
+  value: string;
+  valueEnd?: string;
+}

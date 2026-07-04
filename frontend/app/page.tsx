@@ -128,6 +128,20 @@ export default function ScreenerPage() {
     fetchResults(DEFAULT_FILTERS);
   }, [fetchResults]);
 
+  const handleColumnSort = useCallback(
+    (column: string) => {
+      const currentSortBy = state.filters.sort_by || "market_cap_crore";
+      const currentSortDir = state.filters.sort_dir || "desc";
+
+      if (column === currentSortBy) {
+        updateFilters({ sort_by: column, sort_dir: currentSortDir === "asc" ? "desc" : "asc" });
+      } else {
+        updateFilters({ sort_by: column, sort_dir: "asc" });
+      }
+    },
+    [state.filters.sort_by, state.filters.sort_dir, updateFilters],
+  );
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
       <h1 className="text-2xl font-bold tracking-tight">Strattest Screener</h1>
@@ -168,6 +182,7 @@ export default function ScreenerPage() {
             sortDir={state.filters.sort_dir || "desc"}
             warnings={state.results.warnings}
             onSortChange={(sort_by, sort_dir) => updateFilters({ sort_by, sort_dir })}
+            sortColumns={state.options?.sort_columns}
           />
           <ResultsTable
             columns={state.results.columns}
@@ -177,6 +192,9 @@ export default function ScreenerPage() {
             offset={state.filters.offset || 0}
             totalCount={state.results.total_count}
             onPageChange={setPage}
+            sortBy={state.filters.sort_by}
+            sortDir={state.filters.sort_dir}
+            onSort={handleColumnSort}
           />
         </>
       )}
