@@ -91,3 +91,12 @@ CREATE TABLE IF NOT EXISTS stock_fundamentals (
     total_revenue REAL,
     ebitda REAL
 );
+
+CREATE INDEX IF NOT EXISTS idx_fund_sector ON stock_fundamentals(sector);
+CREATE INDEX IF NOT EXISTS idx_fund_industry ON stock_fundamentals(industry);
+CREATE INDEX IF NOT EXISTS idx_fund_pe ON stock_fundamentals(pe_ratio);
+CREATE INDEX IF NOT EXISTS idx_fund_roe ON stock_fundamentals(roe_pct);
+CREATE INDEX IF NOT EXISTS idx_fund_mcap ON stock_fundamentals(market_cap_crore);
+CREATE INDEX IF NOT EXISTS idx_fund_rev_growth ON stock_fundamentals(revenue_growth_pct);
+CREATE INDEX IF NOT EXISTS idx_fund_debt_eq ON stock_fundamentals(debt_to_equity);
+CREATE INDEX IF NOT EXISTS idx_eod_date_ticker ON eod_prices(date, ticker);
