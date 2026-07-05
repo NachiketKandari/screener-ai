@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { CompanyResponse } from "@/lib/types";
 import { fmtLargeNumber, fmtPercent, fmtMarketCap, fmtPrice, colorSignal } from "@/lib/format";
 import { METRIC_GLOSSARY } from "@/lib/glossary";
@@ -14,7 +15,7 @@ export function MetricsDashboard({ company }: Props) {
   const g = company.growth;
   const f = company.financial_health;
 
-  const sections = [
+  const sections = useMemo(() => [
     {
       title: "Valuation",
       cards: [
@@ -50,7 +51,7 @@ export function MetricsDashboard({ company }: Props) {
         { metricId: "total_cash_per_share", label: "Cash Per Share", value: fmtPrice(f.total_cash_per_share) },
       ],
     },
-  ];
+  ], [company]);
 
   return (
     <div className="space-y-6">

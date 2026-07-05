@@ -314,18 +314,24 @@ export const FILTER_REGISTRY: FilterMetricDef[] = [
 
 // ── Lookup helpers ────────────────────────────────────────────────────
 
+const REGISTRY_MAP = new Map<string, FilterMetricDef>();
+for (const m of FILTER_REGISTRY) {
+  REGISTRY_MAP.set(m.id, m);
+}
+
 export function getMetric(id: string): FilterMetricDef | undefined {
-  return FILTER_REGISTRY.find((m) => m.id === id);
+  return REGISTRY_MAP.get(id);
+}
+
+const METRICS_BY_CATEGORY = new Map<string, FilterMetricDef[]>();
+for (const m of FILTER_REGISTRY) {
+  const list = METRICS_BY_CATEGORY.get(m.category) || [];
+  list.push(m);
+  METRICS_BY_CATEGORY.set(m.category, list);
 }
 
 export function getMetricsByCategory(): Map<string, FilterMetricDef[]> {
-  const map = new Map<string, FilterMetricDef[]>();
-  for (const m of FILTER_REGISTRY) {
-    const list = map.get(m.category) || [];
-    list.push(m);
-    map.set(m.category, list);
-  }
-  return map;
+  return METRICS_BY_CATEGORY;
 }
 
 // ── Default visible chips ─────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Info } from "lucide-react";
 
@@ -8,7 +9,7 @@ interface Props {
   description?: string;
 }
 
-export function MetricCard({ label, value, signal = "neutral", description }: Props) {
+export const MetricCard = memo(function MetricCard({ label, value, signal = "neutral", description }: Props) {
   return (
     <div className="bg-muted/30 border rounded-lg p-3">
       <div className="flex items-center gap-1.5">
@@ -46,4 +47,4 @@ export function MetricCard({ label, value, signal = "neutral", description }: Pr
       <div className="text-lg font-semibold tabular-nums mt-1">{value}</div>
     </div>
   );
-}
+});

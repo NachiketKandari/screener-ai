@@ -1,9 +1,8 @@
 "use client";
 
-import { SkeletonTable } from "./skeleton-table";
-import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { useMemo, useCallback } from "react";
+import { DataTable, type Column } from "./data-table";
+import { fmtPrice, fmtMarketCap, fmtPercent, fmtLargeNumber } from "@/lib/format";
 
 interface Props {
   columns: string[];
@@ -18,7 +17,6 @@ interface Props {
   onSort?: (column: string) => void;
 }
 
-// Columns that can be sorted (must exist in the backend SORT_COLUMNS whitelist)
 const SORTABLE_COLUMNS = new Set([
   "market_cap_crore",
   "pe_ratio",
@@ -32,32 +30,44 @@ const SORTABLE_COLUMNS = new Set([
   "eps_ttm",
 ]);
 
-function formatCell(value: string | number | null): string {
-  if (value === null) return "—";
-  if (typeof value === "number") {
-    if (Number.isInteger(value)) return value.toLocaleString();
-    return value.toFixed(2);
-  }
-  return String(value);
-}
+const COLUMN_LABELS: Record<string, string> = {
+  ticker: "Ticker",
+  company_name: "Company",
+  sector: "Sector",
+  current_price: "CMP (₹)",
+  pe_ratio: "P/E",
+  roe_pct: "ROE %",
+  market_cap_crore: "Market Cap (Cr)",
+  revenue_growth_pct: "Revenue Growth %",
+  debt_to_equity: "D/E",
+  dividend_yield_pct: "Div Yield %",
+  pb_ratio: "P/B",
+  eps_ttm: "EPS",
+  earnings_growth_pct: "Earnings Growth %",
+};
 
-function formatColumnLabel(col: string): string {
-  const labels: Record<string, string> = {
-    ticker: "Ticker",
-    company_name: "Company",
-    sector: "Sector",
-    current_price: "CMP (₹)",
-    pe_ratio: "P/E",
-    roe_pct: "ROE %",
-    market_cap_crore: "Market Cap (Cr)",
-    revenue_growth_pct: "Revenue Growth %",
-    debt_to_equity: "D/E",
-    dividend_yield_pct: "Div Yield %",
-    pb_ratio: "P/B",
-    eps_ttm: "EPS",
-    earnings_growth_pct: "Earnings Growth %",
-  };
-  return labels[col] || col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function formatCell(key: string, value: any): string {
+  if (value === null || value === undefined) return "—";
+  const num = Number(value);
+  if (isNaN(num)) return String(value);
+  switch (key) {
+    case "current_price":
+      return fmtPrice(num);
+    case "market_cap_crore":
+      return fmtMarketCap(num);
+    case "roe_pct":
+    case "revenue_growth_pct":
+    case "earnings_growth_pct":
+    case "dividend_yield_pct":
+      return fmtPercent(num);
+    case "pe_ratio":
+    case "pb_ratio":
+    case "eps_ttm":
+    case "debt_to_equity":
+      return fmtLargeNumber(num);
+    default:
+      return fmtLargeNumber(num);
+  }
 }
 
 export function ResultsTable({
@@ -72,129 +82,50 @@ export function ResultsTable({
   sortDir,
   onSort,
 }: Props) {
-  const totalPages = Math.ceil(totalCount / limit);
-  const currentPage = Math.floor(offset / limit) + 1;
+  const columnDefs: Column[] = useMemo(
+    () =>
+      columns.map((col) => ({
+        key: col,
+        label: COLUMN_LABELS[col] || col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        sortable: SORTABLE_COLUMNS.has(col),
+        linkable: col === "ticker" || col === "company_name",
+      })),
+    [columns],
+  );
 
-  if (rows.length === 0 && !loading) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p className="text-lg font-medium">No stocks match your filters.</p>
-        <p className="text-sm mt-1">Try broadening your criteria.</p>
-      </div>
-    );
-  }
+  const mappedRows: Record<string, any>[] = useMemo(
+    () =>
+      rows.map((row) => {
+        const obj: Record<string, any> = {};
+        columns.forEach((col, i) => {
+          obj[col] = row[i];
+        });
+        return obj;
+      }),
+    [rows, columns],
+  );
+
+  const getRowHref = useCallback(
+    (row: Record<string, any>) => `/company/${encodeURIComponent(row.ticker)}`,
+    [],
+  );
 
   return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/50 border-b">
-              {columns.map((col) => {
-                const isSortable = SORTABLE_COLUMNS.has(col);
-                const isActive = sortBy === col;
-
-                return (
-                  <th
-                    key={col}
-                    className={`text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap ${
-                      isSortable
-                        ? "cursor-pointer select-none hover:text-foreground hover:bg-muted transition-colors"
-                        : ""
-                    } ${isActive ? "text-foreground" : ""}`}
-                    onClick={() => {
-                      if (isSortable && onSort) onSort(col);
-                    }}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {formatColumnLabel(col)}
-                      {isActive && sortDir === "asc" && (
-                        <ArrowUp className="h-3 w-3" />
-                      )}
-                      {isActive && sortDir === "desc" && (
-                        <ArrowDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <SkeletonTable rows={Math.min(limit, 10)} cols={columns.length} />
-            ) : (
-              rows.map((row, i) => {
-                const tickerIndex = columns.indexOf("ticker");
-                const companyIndex = columns.indexOf("company_name");
-                const ticker = tickerIndex >= 0 ? String(row[tickerIndex] || "") : "";
-
-                return (
-                  <tr
-                    key={i}
-                    className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => {
-                      if (ticker) window.location.href = `/company/${encodeURIComponent(ticker)}`;
-                    }}
-                  >
-                    {row.map((cell, j) => {
-                      const isTickerCol = j === tickerIndex;
-                      const isCompanyCol = j === companyIndex;
-                      const isLink = isTickerCol || isCompanyCol;
-
-                      return (
-                        <td key={j} className={`px-4 py-2.5 whitespace-nowrap ${isLink ? "text-primary" : ""}`}>
-                          {isLink && ticker ? (
-                            <Link
-                              href={`/company/${encodeURIComponent(ticker)}`}
-                              className="hover:underline"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {formatCell(cell)}
-                            </Link>
-                          ) : (
-                            formatCell(cell)
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {totalCount > limit && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Showing {offset + 1}–{Math.min(offset + limit, totalCount)} of{" "}
-            {totalCount.toLocaleString()}
-          </span>
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={offset === 0}
-              onClick={() => onPageChange(Math.max(0, offset - limit))}
-            >
-              <ChevronLeft className="h-4 w-4" /> Prev
-            </Button>
-            <span className="px-3 py-1.5 tabular-nums">
-              {currentPage} / {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={offset + limit >= totalCount}
-              onClick={() => onPageChange(offset + limit)}
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
+    <DataTable
+      columns={columnDefs}
+      rows={mappedRows}
+      loading={loading}
+      emptyMessage="No stocks match your filters."
+      emptyDetail="Try broadening your criteria."
+      sortBy={sortBy}
+      sortDir={sortDir}
+      onSort={onSort}
+      limit={limit}
+      offset={offset}
+      totalCount={totalCount}
+      onPageChange={onPageChange}
+      formatCell={formatCell}
+      getRowHref={getRowHref}
+    />
   );
 }

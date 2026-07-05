@@ -22,12 +22,19 @@ interface Props {
 
 export function CompanyChart({ chart, ticker, onRangeChange, onLoad, expanded }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<any>(null);
+  const seriesRef = useRef<any>(null);
   const [range, setRange] = useState("1y");
   const [chartType, setChartType] = useState<"line" | "candlestick">("line");
   const [error, setError] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
+  // Lazy-load chart data exactly once on mount
   useEffect(() => {
-    onLoad();
+    if (!loadedRef.current) {
+      loadedRef.current = true;
+      if (!chart) onLoad();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRangeChange = useCallback((newRange: string) => {
@@ -36,39 +43,58 @@ export function CompanyChart({ chart, ticker, onRangeChange, onLoad, expanded }:
     onRangeChange(newRange);
   }, [onRangeChange]);
 
+  // Create or update chart when data changes
   useEffect(() => {
     if (!chart || !containerRef.current) return;
+
+    let cancelled = false;
 
     const loadChart = async () => {
       const { createChart, ColorType, LineSeries, CandlestickSeries } = await import("lightweight-charts");
       const el = containerRef.current;
-      if (!el) return;
+      if (!el || cancelled) return;
 
-      el.innerHTML = "";
+      // Reuse chart instance if type hasn't changed
+      const typeChanged = chartRef.current && chartRef.current._chartType !== chartType;
 
-      const chartInstance = createChart(el, {
-        layout: {
-          background: { type: ColorType.Solid, color: "transparent" },
-          textColor: "#64748b",
-        },
-        grid: {
-          vertLines: { color: "#f1f5f9" },
-          horzLines: { color: "#f1f5f9" },
-        },
-        crosshair: { mode: 0 },
-        rightPriceScale: { borderColor: "#e2e8f0" },
-        timeScale: { borderColor: "#e2e8f0" },
-        width: el.clientWidth,
-        height: expanded ? 500 : 350,
-      });
+      if (!chartRef.current || typeChanged) {
+        if (chartRef.current) {
+          chartRef.current.remove();
+          chartRef.current = null;
+          seriesRef.current = null;
+        }
+        el.innerHTML = "";
 
-      const series = chartType === "line"
-        ? chartInstance.addSeries(LineSeries, {
+        chartRef.current = createChart(el, {
+          layout: {
+            background: { type: ColorType.Solid, color: "transparent" },
+            textColor: "#64748b",
+          },
+          grid: {
+            vertLines: { color: "#f1f5f9" },
+            horzLines: { color: "#f1f5f9" },
+          },
+          crosshair: { mode: 0 },
+          rightPriceScale: { borderColor: "#e2e8f0" },
+          timeScale: { borderColor: "#e2e8f0" },
+          width: el.clientWidth,
+          height: expanded ? 500 : 350,
+        });
+        (chartRef.current as any)._chartType = chartType;
+
+        if (chartType === "line") {
+          seriesRef.current = chartRef.current.addSeries(LineSeries, {
             color: "#2563eb",
             lineWidth: 2,
             priceFormat: { type: "price", precision: 2, minMove: 0.01 },
-          })
-        : chartInstance.addSeries(CandlestickSeries, {
+          });
+          seriesRef.current.setData(
+            chart.data
+              .filter((d) => d.close != null)
+              .map((d) => ({ time: d.date, value: d.close! }))
+          );
+        } else {
+          seriesRef.current = chartRef.current.addSeries(CandlestickSeries, {
             upColor: "#16a34a",
             downColor: "#dc2626",
             borderUpColor: "#16a34a",
@@ -76,49 +102,99 @@ export function CompanyChart({ chart, ticker, onRangeChange, onLoad, expanded }:
             wickUpColor: "#16a34a",
             wickDownColor: "#dc2626",
           });
+          seriesRef.current.setData(
+            chart.data
+              .filter((d) => d.open != null && d.high != null && d.low != null && d.close != null)
+              .map((d) => ({
+                time: d.date,
+                open: d.open!,
+                high: d.high!,
+                low: d.low!,
+                close: d.close!,
+              }))
+          );
+        }
 
-      if (chartType === "line") {
-        series.setData(
-          chart.data
-            .filter((d) => d.close != null)
-            .map((d) => ({ time: d.date, value: d.close! }))
-        );
+        chartRef.current.timeScale().fitContent();
+        chartRef.current.timeScale().applyOptions({
+          fixLeftEdge: true,
+          fixRightEdge: true,
+        });
+
+        const handleResize = () => {
+          if (chartRef.current) {
+            chartRef.current.applyOptions({ width: el.clientWidth });
+          }
+        };
+        window.addEventListener("resize", handleResize);
+        (chartRef.current as any)._resizeHandler = handleResize;
       } else {
-        series.setData(
-          chart.data
-            .filter((d) => d.open != null && d.high != null && d.low != null && d.close != null)
-            .map((d) => ({
-              time: d.date,
-              open: d.open!,
-              high: d.high!,
-              low: d.low!,
-              close: d.close!,
-            }))
-        );
+        // Same chart type, just update data
+        if (seriesRef.current) {
+          if (chartType === "line") {
+            seriesRef.current.setData(
+              chart.data
+                .filter((d) => d.close != null)
+                .map((d) => ({ time: d.date, value: d.close! }))
+            );
+          } else {
+            seriesRef.current.setData(
+              chart.data
+                .filter((d) => d.open != null && d.high != null && d.low != null && d.close != null)
+                .map((d) => ({
+                  time: d.date,
+                  open: d.open!,
+                  high: d.high!,
+                  low: d.low!,
+                  close: d.close!,
+                }))
+            );
+          }
+          chartRef.current.timeScale().fitContent();
+        }
+
+        // Update height if expanded changed
+        if (chartRef.current) {
+          chartRef.current.applyOptions({ width: el.clientWidth, height: expanded ? 500 : 350 });
+        }
       }
-
-      chartInstance.timeScale().fitContent();
-      chartInstance.timeScale().applyOptions({
-        fixLeftEdge: true,
-        fixRightEdge: true,
-      });
-
-      const handleResize = () => {
-        chartInstance.applyOptions({ width: el.clientWidth });
-      };
-      window.addEventListener("resize", handleResize);
-
-      return () => {
-        window.removeEventListener("resize", handleResize);
-        chartInstance.remove();
-      };
     };
 
     loadChart().catch((err) => {
-      setError("Failed to load chart");
-      console.error(err);
+      if (!cancelled) {
+        setError("Failed to load chart");
+        console.error(err);
+      }
     });
-  }, [chart, chartType, expanded]);
+
+    return () => {
+      cancelled = true;
+      // Cleanup chart only on unmount, not on data changes
+    };
+  }, [chart, chartType]); // expanded not in deps — handled via applyOptions above
+
+  // Handle expanded changes without recreating chart
+  useEffect(() => {
+    if (chartRef.current && containerRef.current) {
+      chartRef.current.applyOptions({
+        width: containerRef.current.clientWidth,
+        height: expanded ? 500 : 350,
+      });
+    }
+  }, [expanded]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (chartRef.current) {
+        const handler = (chartRef.current as any)._resizeHandler;
+        if (handler) window.removeEventListener("resize", handler);
+        chartRef.current.remove();
+        chartRef.current = null;
+        seriesRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -157,7 +233,10 @@ export function CompanyChart({ chart, ticker, onRangeChange, onLoad, expanded }:
 
       {error && (
         <div className="text-sm text-destructive py-4 text-center">
-          {error} <button onClick={() => onRangeChange(range)} className="text-primary hover:underline ml-1">Retry</button>
+          {error}{" "}
+          <button onClick={() => onRangeChange(range)} className="text-primary hover:underline ml-1">
+            Retry
+          </button>
         </div>
       )}
 
