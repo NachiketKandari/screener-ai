@@ -1,6 +1,6 @@
-# Strattest
+# Screener AI
 
-A stock screening and analysis platform for Indian stocks on the NSE (National Stock Exchange). Screen stocks using structured filters or natural language, explore company fundamentals with interactive charts, and compare peers — all backed by a local SQLite database with 5 years of daily OHLCV data and ~40 fundamental metrics.
+A stock screening and analysis platform for Indian stocks on the NSE (National Stock Exchange). Screen stocks using structured filters or natural language, explore company fundamentals with interactive charts, and compare peers — backed by SQLite or Turso with 5 years of daily OHLCV data and ~40 fundamental metrics per stock.
 
 ## Features
 
@@ -43,7 +43,8 @@ A standalone text-to-SQL tool using DeepSeek V4 Flash with sqlglot validation an
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Charts | lightweight-charts v5 (line + candlestick) |
 | UI Components | Radix UI (Popover, Dialog, Select), Lucide icons |
-| Database | SQLite (single-file, ~370 MB for full dataset) |
+| Database | SQLite (single-file, ~370 MB) or Turso (libsql) with HTTP/embedded-replica modes |
+| Caching | Dual-layer TTL cache (frontend in-memory + backend route cache), in-flight request dedup |
 | Data source | yfinance (free, no API key required) |
 | NLP / LLM | DeepSeek V4 Flash (via OpenRouter-compatible API) |
 | SQL tooling | sqlglot (query validation for LLM-generated SQL) |
@@ -51,38 +52,45 @@ A standalone text-to-SQL tool using DeepSeek V4 Flash with sqlglot validation an
 ## Project Structure
 
 ```
-strattest/
+screener-ai/
 ├── backend/                  FastAPI backend
-│   ├── main.py              App factory, CORS, logging
+│   ├── main.py              App factory, CORS, logging, rate limiting
+│   ├── middleware.py         Request logging middleware
+│   ├── limiter.py            Rate limiter config
+│   ├── cache.py              In-memory TTL route cache
 │   ├── routes/
 │   │   ├── screen.py         GET /api/screen (structured) + POST /api/screen/nl (NL)
 │   │   ├── company.py        GET /api/company/{ticker}, /chart, /peers
 │   │   └── filters.py        GET /api/filters/options + GET /api/health
-│   └── tests/                Backend test suite (conftest.py + per-route tests)
+│   └── tests/                Backend test suite
 ├── frontend/                 Next.js 14 frontend
 │   ├── app/
 │   │   ├── page.tsx          Home page — screener with filters + NL input
 │   │   ├── layout.tsx         Root layout
-│   │   └── company/[ticker]/page.tsx  Company detail page with tabs
+│   │   └── company/[ticker]/page.tsx  Company detail page with tabbed navigation
 │   ├── components/
 │   │   ├── company/           CompanyHeader, CompanyChart, MetricsDashboard,
 │   │   │                      MetricCard, PeerComparison, AnalystCoverage,
 │   │   │                      CompanyNavTabs, Skeleton, ErrorState
+│   │   ├── data-table.tsx     Reusable sortable, paginated data table (React.memo)
+│   │   ├── results-table.tsx  Screener results with column formatting + sorting
 │   │   ├── filter-bar.tsx     Filter bar with chip add/remove
 │   │   ├── filter-chip.tsx    Individual filter chip UI
 │   │   ├── add-filter-dropdown.tsx  Category-grouped filter picker
 │   │   ├── natural-language.tsx     Natural language query input
-│   │   ├── results-table.tsx  Sortable, paginated results table
 │   │   ├── summary-bar.tsx    Result count, sort dropdown
 │   │   └── data-freshness-footer.tsx  DB freshness indicator
 │   └── lib/
-│       ├── api.ts             Frontend API client (typed fetch wrappers)
+│       ├── api.ts             API client with TTL cache + in-flight request dedup
+│       ├── cache.ts           In-memory cache with deduplication
+│       ├── hooks.ts           useAsyncData hook with dedup + refetch
 │       ├── types.ts           TypeScript types for all API responses
-│       ├── filter-registry.ts  30+ filter metric definitions + serialization
+│       ├── filter-registry.ts  30+ filter metric definitions + O(1) Map lookups
 │       ├── glossary.ts        Plain-English metric descriptions for popovers
+│       ├── logger.ts          Structured JSON logger
 │       └── format.ts          Number/percent/price formatting utilities
 ├── common/                   Shared Python modules
-│   ├── database.py           SQLite connection helper
+│   ├── database.py           SQLite + Turso connection factory
 │   ├── filters.py            Screen query builder (FilterSpec → SQL)
 │   ├── types.py              Pydantic models shared by backend and screener
 │   └── test_filters.py       Tests for query builder
@@ -96,6 +104,7 @@ strattest/
 │   ├── backfill.py           Bulk OHLCV + fundamentals download
 │   ├── daily_sync.py         Incremental daily updates
 │   ├── extend_history.py     Extend historical price data
+│   ├── shared.py             Shared pipeline utilities
 │   ├── schema.sql            Database schema (eod_prices + stock_fundamentals)
 │   └── nse_tickers.csv       NSE ticker list (2,300+ stocks)
 ├── db/                       SQLite database (gitignored)
@@ -113,8 +122,8 @@ strattest/
 ### 1. Clone and set up Python
 
 ```bash
-git clone <repo-url>
-cd strattest
+git clone https://github.com/NachiketKandari/screener-ai.git
+cd screener-ai
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -132,10 +141,12 @@ Optional overrides:
 | Variable | Default |
 |---|---|
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
-| `STRATTEST_MODEL` | `deepseek-v4-flash` |
-| `STRATTEST_DB_PATH` | `db/strattest.db` |
-| `STRATTEST_QUERY_TIMEOUT` | `30` |
-| `STRATTEST_MAX_ROWS` | `1000` |
+| `SCREENER_AI_MODEL` | `deepseek-v4-flash` |
+| `SCREENER_AI_DB_PATH` | `db/screener-ai.db` |
+| `SCREENER_AI_QUERY_TIMEOUT` | `30` |
+| `SCREENER_AI_MAX_ROWS` | `1000` |
+| `TURSO_URL` | (optional) Turso libsql URL |
+| `TURSO_AUTH_TOKEN` | (optional) Turso auth token |
 
 ### 3. Build the database
 

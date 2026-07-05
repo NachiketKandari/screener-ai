@@ -16,4 +16,7 @@ venv/
 # Secrets
 .env
 *.csv
-*.csv
+
+# Project state & docs
+PROJECT_STATE.md
+docs/
