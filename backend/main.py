@@ -107,6 +107,15 @@ def create_app() -> FastAPI:
     app.include_router(filters.router)
     app.include_router(company.router)
 
+    @app.get("/", include_in_schema=False)
+    async def root() -> dict:
+        return {
+            "service": "Strattest API",
+            "status": "ok",
+            "docs": "/docs",
+            "health": "/api/health",
+        }
+
     return app
 
 
