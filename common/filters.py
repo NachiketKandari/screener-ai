@@ -25,6 +25,26 @@ SORT_COLUMNS: dict[str, str] = {
 }
 
 
+def sort_columns_ui() -> list[dict]:
+    """Return sort columns in the format expected by the filter-options endpoint."""
+    labels: dict[str, str] = {
+        "market_cap_crore": "Market Cap",
+        "pe_ratio": "P/E Ratio",
+        "roe_pct": "ROE",
+        "current_price": "Current Price",
+        "revenue_growth_pct": "Revenue Growth",
+        "earnings_growth_pct": "Earnings Growth",
+        "debt_to_equity": "Debt to Equity",
+        "dividend_yield_pct": "Dividend Yield",
+        "pb_ratio": "P/B Ratio",
+        "eps_ttm": "EPS (TTM)",
+    }
+    return [
+        {"value": key, "label": labels.get(key, key)}
+        for key in SORT_COLUMNS
+    ]
+
+
 def resolve_sort(sort_by: str) -> str:
     """Validate *sort_by* against the whitelist and return the safe column name.
 
